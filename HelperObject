@@ -1,0 +1,265 @@
+import * as hz from "horizon/core";
+
+export class HelperObject extends hz.Component<typeof HelperObject> {
+    static propsDefinition = {
+        // Define levels this object is associated with
+        levels: { type: hz.PropTypes.String, default: "" }, // Comma-separated levels (e.g., "1,3,5")
+        
+        // Define multiple start positions and rotations
+        positionArena1: { type: hz.PropTypes.Vec3, default: new hz.Vec3(0, 0, 0) },
+        positionArena2: { type: hz.PropTypes.Vec3, default: new hz.Vec3(0, 0, 0) },
+        positionArena3: { type: hz.PropTypes.Vec3, default: new hz.Vec3(0, 0, 0) },
+        positionArena4: { type: hz.PropTypes.Vec3, default: new hz.Vec3(0, 0, 0) },
+        positionArena5: { type: hz.PropTypes.Vec3, default: new hz.Vec3(0, 0, 0) },
+
+        rotationArena1: { type: hz.PropTypes.Quaternion, default: new hz.Quaternion(0, 0, 0, 1) },
+        rotationArena2: { type: hz.PropTypes.Quaternion, default: new hz.Quaternion(0, 0, 0, 1) },
+        rotationArena3: { type: hz.PropTypes.Quaternion, default: new hz.Quaternion(0, 0, 0, 1) },
+        rotationArena4: { type: hz.PropTypes.Quaternion, default: new hz.Quaternion(0, 0, 0, 1) },
+        rotationArena5: { type: hz.PropTypes.Quaternion, default: new hz.Quaternion(0, 0, 0, 1) },
+
+        // Movement properties
+        rotate: { type: hz.PropTypes.Boolean, default: false },
+        swing: { type: hz.PropTypes.Boolean, default: false },
+        pop: { type: hz.PropTypes.Boolean, default: false },
+        sideToSide: { type: hz.PropTypes.Boolean, default: false },
+        sideToSideDistance: { type: "number", default: 3 },
+        sideToSideSpeed: { type: "number", default: 3 },
+
+        // New customizable props
+        rotationAxis: { type: hz.PropTypes.Vec3, default: new hz.Vec3(0, 1, 0) }, // Axis of rotation
+        rotationSpeed: { type: "number", default: 0.1 }, // Speed of rotation
+        swingAmount: { type: "number", default: 0.5 }, // Swing amount
+    };
+
+    private originalPosition!: hz.Vec3;
+    private originalRotation!: hz.Quaternion;
+    private movementIntervals: number[] = [];
+    private movementTimeouts: number[] = [];
+
+    public start() {
+     
+
+        // Save the original position and rotation
+        this.originalPosition = this.entity.position.get();
+        this.originalRotation = this.entity.rotation.get();
+    }
+
+    public handleArenaStart(arenaId: number) {
+      
+        
+        const levelsArray = this.props.levels.split(",").map((level) => parseInt(level.trim(), 10));
+        if (!levelsArray.includes(arenaId)) {
+           
+            return;
+        }
+    
+        // Move to the updated position and rotation for the given arena
+        this.moveToPosition(arenaId);
+    
+        // Add a slight delay to ensure the position is updated before starting movements
+        this.async.setTimeout(() => {
+            // Start movements based on enabled properties
+            // Delay rotation to ensure object settles into position
+    this.async.setTimeout(() => {
+        this.startLocalRotating(); // Start rotating on its local axis
+    }, 500); 
+            if (this.props.swing) this.startSwinging();
+            if (this.props.pop) this.startPopping();
+            if (this.props.sideToSide) this.startSideToSide();
+        }, 50);
+    }
+    
+  
+    private stopAllMovements() {
+   
+        this.movementIntervals.forEach(interval => this.async.clearInterval(interval));
+        this.movementTimeouts.forEach(timeout => this.async.clearTimeout(timeout));
+        this.movementIntervals = [];
+        this.movementTimeouts = [];
+    }
+
+    public handleRemove() {
+        
+        this.stopAllMovements();
+
+        // Reset position and rotation
+        this.entity.position.set(this.originalPosition);
+        this.entity.rotation.set(this.originalRotation);
+    }
+
+    private moveToPosition(arenaId: number) {
+        let position: hz.Vec3 | undefined;
+        let rotation: hz.Quaternion | undefined;
+    
+        switch (arenaId) {
+            case 1:
+                position = this.props.positionArena1;
+                rotation = this.props.rotationArena1; // Use predefined rotation
+                break;
+            case 2:
+                position = this.props.positionArena2;
+                rotation = this.props.rotationArena2;
+                break;
+            case 3:
+                position = this.props.positionArena3;
+                rotation = this.props.rotationArena3;
+                break;
+            // Add more cases for other arenas
+            default:
+                return; // Invalid arenaId
+        }
+    
+        if (position && rotation) {
+            this.entity.position.set(position);
+    
+            // Ensure the object’s rotation is properly set when moved
+            this.entity.rotation.set(rotation);
+        } else {
+        
+        }
+    }
+    
+    
+    
+    
+    
+    
+    
+    private startLocalRotating() {
+        const rotationSpeedSeconds = this.props.rotationSpeed || 5; // Time for one full rotation
+        const rotationAxis = this.props.rotationAxis.normalize(); // Ensure axis is normalized
+    
+        if (rotationSpeedSeconds <= 0) {
+    
+            return;
+        }
+    
+        const radiansPerSecond = (2 * Math.PI) / rotationSpeedSeconds; // Full circle in radians
+        const updateInterval = 100; // Update interval in milliseconds
+        const radiansPerUpdate = radiansPerSecond * (updateInterval / 1000);
+    
+        const intervalId = this.async.setInterval(() => {
+            const incrementalRotation = hz.Quaternion.fromAxisAngle(rotationAxis, radiansPerUpdate);
+    
+            // Combine with the current rotation to rotate around the local axis
+            const currentRotation = this.entity.rotation.get();
+            const newRotation = currentRotation.mul(incrementalRotation);
+    
+            this.entity.rotation.set(newRotation.normalize()); // Apply the new rotation
+        }, updateInterval);
+    
+        this.movementIntervals.push(intervalId);
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+
+    private startSwinging() {
+       
+        let direction = 1;
+        const swingAmount = this.props.swingAmount;
+
+        const intervalId = this.async.setInterval(() => {
+            const currentPosition = this.entity.position.get();
+            this.entity.position.set(currentPosition.add(new hz.Vec3(direction * swingAmount, 0, 0)));
+            direction *= -1;
+        }, 500);
+
+        this.movementIntervals.push(intervalId);
+    }
+
+    private startPopping() {
+       
+        const intervalId = this.async.setInterval(() => {
+            const currentPosition = this.entity.position.get();
+            const isPoppedUp = currentPosition.y > this.originalPosition.y;
+            const newY = isPoppedUp ? this.originalPosition.y : this.originalPosition.y + 1;
+            this.entity.position.set(new hz.Vec3(currentPosition.x, newY, currentPosition.z));
+        }, 1000);
+
+        this.movementIntervals.push(intervalId);
+    }
+
+    private startSideToSide() {
+        const basePosition = this.entity.position.get(); // Starting world position
+        const distance = this.props.sideToSideDistance || 3; // Total side-to-side distance
+        const speed = this.props.sideToSideSpeed || 3; // Time to complete one full cycle (in seconds)
+        const updateInterval = 50; // Update interval (milliseconds)
+        const totalUpdates = (speed * 1000) / updateInterval; // Total updates per cycle
+        const stepSize = (2 * distance) / totalUpdates; // Movement step per update
+    
+        let direction = 1; // 1 for right, -1 for left
+        const startLocalX = this.entity.position.get().x; // Track initial X position
+    
+        const intervalId = this.async.setInterval(() => {
+            const currentWorldPosition = this.entity.position.get(); // Get the current world position
+            const localDeltaX = currentWorldPosition.x - startLocalX;
+    
+            // Reverse direction if bounds are exceeded
+            if (Math.abs(localDeltaX) >= distance) {
+                direction *= -1; // Reverse direction
+            
+            }
+    
+            // Compute the next world position
+            const nextWorldPosition = currentWorldPosition.add(
+                new hz.Vec3(stepSize * direction, 0, 0) // Only move along the X-axis
+            );
+    
+            this.entity.position.set(nextWorldPosition); // Apply the new position
+        }, updateInterval);
+    
+        this.movementIntervals.push(intervalId); // Store interval for cleanup
+    }
+    
+    
+    
+    
+    private applyRotationToVector(rotation: hz.Quaternion, vector: hz.Vec3): hz.Vec3 {
+        const x = vector.x;
+        const y = vector.y;
+        const z = vector.z;
+    
+        const qx = rotation.x;
+        const qy = rotation.y;
+        const qz = rotation.z;
+        const qw = rotation.w;
+    
+        // Perform quaternion-vector multiplication
+        const ix = qw * x + qy * z - qz * y;
+        const iy = qw * y + qz * x - qx * z;
+        const iz = qw * z + qx * y - qy * x;
+        const iw = -qx * x - qy * y - qz * z;
+    
+        // Perform quaternion conjugate multiplication
+        return new hz.Vec3(
+            ix * qw + iw * -qx + iy * -qz - iz * -qy,
+            iy * qw + iw * -qy + iz * -qx - ix * -qz,
+            iz * qw + iw * -qz + ix * -qy - iy * -qx
+        );
+    }
+    private inverseQuaternion(rotation: hz.Quaternion): hz.Quaternion {
+        const magnitudeSquared = rotation.x ** 2 + rotation.y ** 2 + rotation.z ** 2 + rotation.w ** 2;
+        if (magnitudeSquared === 0) return rotation; // Prevent division by zero
+        const inverseMagnitude = 1 / magnitudeSquared;
+        return new hz.Quaternion(
+            -rotation.x * inverseMagnitude,
+            -rotation.y * inverseMagnitude,
+            -rotation.z * inverseMagnitude,
+            rotation.w * inverseMagnitude
+        );
+    }
+    
+
+    
+    
+    
+}
+
+hz.Component.register(HelperObject, "HelperObject");
